@@ -2,7 +2,12 @@
 // Uso:  node server.js        (puerto 8080; otro: PORT=3000 node server.js)
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
 const PORT = Number(process.env.PORT) || 8080;
-const MAX = 4, ROUND_SECS = 180, WIN_KILLS = 10, PAUSE_SECS = 8;
+const MAX = 4, ROUND_SECS = 180, WIN_KILLS = 10, PAUSE_SECS = 8, MAP_COUNT = 5;
+// Mapa: 4 = Cinturón de asteroides. Con ROTAR_MAPAS=1 cambia en cada ronda.
+const ROTATE = !!process.env.ROTAR_MAPAS;
+let mapIdx = ROTATE ? 0 : 4, played = false;
+const PAD_RESPAWN = 25000, ROCK_RESPAWN = 45000;
+let padsOff = {}, rocksOff = {}; // índice -> momento en que reaparece
 
 // ---------- HTTP: sirve el juego ----------
 const page = () => fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
@@ -67,7 +72,7 @@ function onMsg(c, m) {
     if (id < 0) { c.send({ t: 'full' }); c.sock.end(); return; }
     c.id = id; c.name = String(m.name || 'Piloto').replace(/[<>&"']/g, '').slice(0, 12) || 'Piloto';
     slots[id] = c;
-    c.send({ t: 'welcome', id, round });
+    c.send({ t: 'welcome', id, round: { ...round, map: mapIdx }, padsOff: Object.keys(padsOff).map(Number), rocksOff: Object.keys(rocksOff).map(Number) });
     bcast({ t: 'joined', id, name: c.name }, c);
     bcast({ t: 'players', list: plist() });
     log(`${c.name} entró (${players().length}/${MAX})`);
@@ -75,7 +80,15 @@ function onMsg(c, m) {
     return;
   }
   if (c.id < 0) return;
-  if (m.t === 'st' || m.t === 'fire') { m.id = c.id; bcast(m, c); }
+  if (m.t === 'st' || m.t === 'fire' || m.t === 'mis' || m.t === 'mine' || m.t === 'minex') { m.id = c.id; bcast(m, c); }
+  else if (m.t === 'pick') {
+    const i = m.i | 0; if (i < 0 || i > 15 || padsOff[i]) return;   // el primero que llega se lo queda
+    padsOff[i] = Date.now() + PAD_RESPAWN; bcast({ t: 'pick', i, id: c.id });
+  }
+  else if (m.t === 'rockx') {
+    const i = m.i | 0; if (i < 0 || i > 300 || rocksOff[i]) return;
+    rocksOff[i] = Date.now() + ROCK_RESPAWN; bcast({ t: 'rockx', i }, c);
+  }
   else if (m.t === 'dead') {
     c.d++;
     const by = slots[m.by];
@@ -97,27 +110,33 @@ function leave(c) {
 function checkRound() {
   const n = players().length;
   if (round.state === 'wait' && n >= 2) startRound();
-  else if (round.state !== 'wait' && n < 2) { round = { state: 'wait', time: ROUND_SECS }; bcast({ t: 'round', ...round }); }
+  else if (round.state !== 'wait' && n < 2) { round = { state: 'wait', time: ROUND_SECS }; bcast({ t: 'round', map: mapIdx, ...round }); }
 }
 function startRound() {
+  if (played && ROTATE) mapIdx = (mapIdx + 1) % MAP_COUNT;
+  played = true;
+  padsOff = {}; rocksOff = {};
   for (const c of players()) { c.k = 0; c.d = 0; }
   round = { state: 'play', time: ROUND_SECS };
-  bcast({ t: 'round', ...round, fresh: true });
+  bcast({ t: 'round', map: mapIdx, ...round, fresh: true });
   bcast({ t: 'players', list: plist() });
-  log('Nueva ronda');
+  log('Nueva ronda en el mapa ' + mapIdx);
 }
 function endRound() {
   const results = plist().sort((a, b) => b.k - a.k || a.d - b.d);
   round = { state: 'over', time: PAUSE_SECS };
-  bcast({ t: 'round', ...round, results });
+  bcast({ t: 'round', map: mapIdx, ...round, results });
   log('Ronda terminada: gana ' + (results[0] ? results[0].name : '-'));
 }
 setInterval(() => {
+  const now = Date.now();
+  for (const i in padsOff) if (padsOff[i] <= now) { delete padsOff[i]; bcast({ t: 'pad', i: +i }); }
+  for (const i in rocksOff) if (rocksOff[i] <= now) { delete rocksOff[i]; bcast({ t: 'rockon', i: +i }); }
   if (round.state === 'wait') return;
   round.time--;
   if (round.state === 'play' && round.time <= 0) endRound();
-  else if (round.state === 'over' && round.time <= 0) { if (players().length >= 2) startRound(); else { round = { state: 'wait', time: ROUND_SECS }; bcast({ t: 'round', ...round }); } }
-  else bcast({ t: 'round', state: round.state, time: round.time });
+  else if (round.state === 'over' && round.time <= 0) { if (players().length >= 2) startRound(); else { round = { state: 'wait', time: ROUND_SECS }; bcast({ t: 'round', map: mapIdx, ...round }); } }
+  else bcast({ t: 'round', map: mapIdx, state: round.state, time: round.time });
 }, 1000);
 
 function log(s) { console.log(new Date().toLocaleTimeString() + '  ' + s); }
