@@ -1,0 +1,10 @@
+{
+  "name": "escuadron-cometa",
+  "version": "0.4.0",
+  "description": "Batalla aérea multijugador en el navegador",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED",
+  "private": true
+}
