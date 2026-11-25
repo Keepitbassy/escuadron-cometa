@@ -2,7 +2,7 @@
 // Uso:  node server.js        (puerto 8080; otro: PORT=3000 node server.js)
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
 const PORT = Number(process.env.PORT) || 8080;
-const MAX = 8, ROUND_SECS = 180, WIN_KILLS = 10, PAUSE_SECS = 8, MAP_COUNT = 4;
+const MAX = 8, ROUND_SECS = 180, WIN_KILLS = 15, PAUSE_SECS = 8, MAP_COUNT = 4;
 // Mapas: 0 Mar helado, 1 Ruinas orbitales, 2 Cinturón de asteroides, 3 Nebulosa carmesí.
 // Por defecto: 2. Con ROTAR_MAPAS=1 cambia en cada ronda.
 const ROTATE = !!process.env.ROTAR_MAPAS;
@@ -63,67 +63,104 @@ function parse(c) {
 }
 
 // ---------- Lógica de la sala ----------
+// Cada lugar es un humano (con socket) o un bot. Los bots los simula el navegador del
+// "anfitrión" (el humano conectado con el número más bajo) y el servidor los reparte.
 const slots = new Array(MAX).fill(null);
 let round = { state: 'wait', time: ROUND_SECS };
-const players = () => slots.filter(Boolean);
-const plist = () => players().map(c => ({ id: c.id, name: c.name, k: c.k, d: c.d, team: c.team }));
-const teamKills = t => players().reduce((a, c) => a + (c.team === t ? c.k : 0), 0);
-function bcast(o, except) { const s = JSON.stringify(o); for (const c of players()) if (c !== except) frame(c.sock, s); }
+let host = null;
+const FILL = MODE === 'teams' ? MAX : Math.min(MAX, Math.max(0, Number(process.env.RELLENO ?? 4)));
+const BOT_NAMES = ['Vega', 'Orión', 'Kira', 'Nova', 'Rix', 'Lumen', 'Sable', 'Atlas'];
+const all = () => slots.filter(Boolean);
+const humans = () => all().filter(c => !c.bot);
+const plist = () => all().map(c => ({ id: c.id, name: c.name, k: c.k, d: c.d, team: c.team, bot: !!c.bot }));
+const teamKills = t => all().reduce((a, c) => a + (c.team === t ? c.k : 0), 0);
+const teamSize = t => all().filter(c => c.team === t).length;
+function bcast(o, except) { const s = JSON.stringify(o); for (const c of humans()) if (c !== except) frame(c.sock, s); }
+function removeSlot(c) { slots[c.id] = null; bcast({ t: 'left', id: c.id }); }
+
+function fillBots() {
+  if (!humans().length) { for (const b of all()) if (b.bot) slots[b.id] = null; return; }
+  while (all().length > FILL) {                       // sobran bots: quitar del equipo más grande
+    const bots = all().filter(c => c.bot); if (!bots.length) break;
+    let b = bots[bots.length - 1];
+    if (MODE === 'teams') { const big = teamSize(0) >= teamSize(1) ? 0 : 1; b = bots.filter(x => x.team === big).pop() || b; }
+    removeSlot(b);
+  }
+  while (all().length < FILL) {                       // faltan: agregar al equipo más chico
+    const id = slots.indexOf(null); if (id < 0) break;
+    const used = new Set(all().map(c => c.name));
+    const name = (BOT_NAMES.find(n => !used.has(n + ' (bot)')) || 'Bot ' + id) + ' (bot)';
+    slots[id] = { id, name, k: 0, d: 0, bot: true, team: MODE === 'teams' ? (teamSize(0) <= teamSize(1) ? 0 : 1) : id };
+  }
+}
+function updateHost() {
+  const h = humans().sort((a, b) => a.id - b.id)[0] || null;
+  if (h && h !== host) log('Anfitrión de bots: ' + h.name);
+  host = h;
+  if (host) host.send({ t: 'host', bots: all().filter(c => c.bot).map(c => c.id) });
+}
+function rosterChanged() { fillBots(); updateHost(); bcast({ t: 'players', list: plist() }); checkRound(); }
 
 function onMsg(c, m) {
   if (m.t === 'join') {
     if (c.id >= 0) return;
-    const id = slots.indexOf(null);
-    if (id < 0) { c.send({ t: 'full' }); c.sock.end(); return; }
-    c.id = id;
-    if (MODE === 'teams') { const n0 = players().filter(p => p.team === 0).length, n1 = players().filter(p => p.team === 1).length; c.team = n0 <= n1 ? 0 : 1; } else c.team = id;
+    let team = 0;
+    if (MODE === 'teams') { const h0 = humans().filter(p => p.team === 0).length, h1 = humans().filter(p => p.team === 1).length; team = h0 <= h1 ? 0 : 1; }
+    let id = slots.indexOf(null);
+    if (id < 0) {                                     // lleno: un humano reemplaza a un bot
+      const bots = all().filter(p => p.bot);
+      const b = bots.filter(p => MODE !== 'teams' || p.team === team).pop() || bots.pop();
+      if (!b) { c.send({ t: 'full' }); c.sock.end(); return; }
+      removeSlot(b); id = b.id; if (MODE === 'teams') team = b.team;
+    }
+    c.id = id; c.team = MODE === 'teams' ? team : id; c.k = 0; c.d = 0;
     c.name = String(m.name || 'Piloto').replace(/[<>&"']/g, '').slice(0, 12) || 'Piloto';
     slots[id] = c;
     c.send({ t: 'welcome', id, mode: MODE, team: c.team, round: { ...round, map: mapIdx }, padsOff: Object.keys(padsOff).map(Number), rocksOff: Object.keys(rocksOff).map(Number) });
     bcast({ t: 'joined', id, name: c.name }, c);
-    bcast({ t: 'players', list: plist() });
-    log(`${c.name} entró (${players().length}/${MAX})`);
-    checkRound();
+    log(`${c.name} entró (${humans().length} humanos, ${all().length}/${MAX} pilotos)`);
+    rosterChanged();
     return;
   }
   if (c.id < 0) return;
-  if (m.t === 'st' || m.t === 'fire' || m.t === 'mis' || m.t === 'mine' || m.t === 'minex' || m.t === 'mark') { m.id = c.id; bcast(m, c); }
+  // El anfitrión habla en nombre de sus bots con "bid".
+  let actor = c;
+  if (m.bid != null) { const b = slots[m.bid | 0]; if (c !== host || !b || !b.bot) return; actor = b; }
+  if (m.t === 'st' || m.t === 'fire' || m.t === 'mis' || m.t === 'mine' || m.t === 'minex' || m.t === 'mark') { delete m.bid; m.id = actor.id; bcast(m, c); }
   else if (m.t === 'pick') {
     const i = m.i | 0; if (i < 0 || i > 15 || padsOff[i]) return;   // el primero que llega se lo queda
-    padsOff[i] = Date.now() + PAD_RESPAWN; bcast({ t: 'pick', i, id: c.id });
+    padsOff[i] = Date.now() + PAD_RESPAWN; bcast({ t: 'pick', i, id: actor.id });
   }
   else if (m.t === 'rockx') {
     const i = m.i | 0; if (i < 0 || i > 300 || rocksOff[i]) return;
     rocksOff[i] = Date.now() + ROCK_RESPAWN; bcast({ t: 'rockx', i }, c);
   }
   else if (m.t === 'dead') {
-    c.d++;
+    actor.d++;
     const by = slots[m.by];
-    const valid = by && by !== c && (MODE !== 'teams' || by.team !== c.team);
+    const valid = by && by !== actor && (MODE !== 'teams' || by.team !== actor.team);
     if (valid && round.state === 'play') by.k++;
-    bcast({ t: 'kill', v: c.id, by: valid ? by.id : -1 });
+    bcast({ t: 'kill', v: actor.id, by: valid ? by.id : -1 });
     bcast({ t: 'players', list: plist() });
     if (valid && round.state === 'play' && (MODE === 'teams' ? teamKills(by.team) >= TEAM_WIN : by.k >= WIN_KILLS)) endRound();
   }
 }
 function leave(c) {
   if (c.id < 0 || slots[c.id] !== c) return;
-  slots[c.id] = null;
-  bcast({ t: 'left', id: c.id });
-  bcast({ t: 'players', list: plist() });
-  log(`${c.name} salió (${players().length}/${MAX})`);
-  checkRound();
+  removeSlot(c);
+  log(`${c.name} salió (${humans().length} humanos)`);
+  rosterChanged();
 }
 function checkRound() {
-  const n = players().length;
-  if (round.state === 'wait' && n >= 2) startRound();
-  else if (round.state !== 'wait' && n < 2) { round = { state: 'wait', time: ROUND_SECS }; bcast({ t: 'round', map: mapIdx, ...round }); }
+  const n = all().length, h = humans().length;
+  if (round.state === 'wait' && h >= 1 && n >= 2) startRound();
+  else if (round.state !== 'wait' && (h < 1 || n < 2)) { round = { state: 'wait', time: ROUND_SECS }; bcast({ t: 'round', map: mapIdx, ...round }); }
 }
 function startRound() {
   if (played && ROTATE) mapIdx = (mapIdx + 1) % MAP_COUNT;
   played = true;
   padsOff = {}; rocksOff = {};
-  for (const c of players()) { c.k = 0; c.d = 0; }
+  for (const c of all()) { c.k = 0; c.d = 0; }
   round = { state: 'play', time: ROUND_SECS };
   bcast({ t: 'round', map: mapIdx, ...round, fresh: true });
   bcast({ t: 'players', list: plist() });
@@ -142,7 +179,7 @@ setInterval(() => {
   if (round.state === 'wait') return;
   round.time--;
   if (round.state === 'play' && round.time <= 0) endRound();
-  else if (round.state === 'over' && round.time <= 0) { if (players().length >= 2) startRound(); else { round = { state: 'wait', time: ROUND_SECS }; bcast({ t: 'round', map: mapIdx, ...round }); } }
+  else if (round.state === 'over' && round.time <= 0) { if (humans().length >= 1 && all().length >= 2) startRound(); else { round = { state: 'wait', time: ROUND_SECS }; bcast({ t: 'round', map: mapIdx, ...round }); } }
   else bcast({ t: 'round', map: mapIdx, state: round.state, time: round.time });
 }, 1000);
 
