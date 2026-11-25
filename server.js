@@ -2,11 +2,14 @@
 // Uso:  node server.js        (puerto 8080; otro: PORT=3000 node server.js)
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
 const PORT = Number(process.env.PORT) || 8080;
-const MAX = 4, ROUND_SECS = 180, WIN_KILLS = 10, PAUSE_SECS = 8, MAP_COUNT = 4;
+const MAX = 8, ROUND_SECS = 180, WIN_KILLS = 10, PAUSE_SECS = 8, MAP_COUNT = 4;
 // Mapas: 0 Mar helado, 1 Ruinas orbitales, 2 Cinturón de asteroides, 3 Nebulosa carmesí.
 // Por defecto: 2. Con ROTAR_MAPAS=1 cambia en cada ronda.
 const ROTATE = !!process.env.ROTAR_MAPAS;
 let mapIdx = ROTATE ? 0 : 2, played = false;
+// Modo: MODO=equipos para 4 vs 4 (Azul contra Rojo); por defecto todos contra todos.
+const MODE = /^equip|^team/i.test(process.env.MODO || '') ? 'teams' : 'ffa';
+const TEAM_WIN = 25;
 const PAD_RESPAWN = 25000, ROCK_RESPAWN = 45000;
 let padsOff = {}, rocksOff = {}; // índice -> momento en que reaparece
 
@@ -60,10 +63,11 @@ function parse(c) {
 }
 
 // ---------- Lógica de la sala ----------
-const slots = [null, null, null, null];
+const slots = new Array(MAX).fill(null);
 let round = { state: 'wait', time: ROUND_SECS };
 const players = () => slots.filter(Boolean);
-const plist = () => players().map(c => ({ id: c.id, name: c.name, k: c.k, d: c.d }));
+const plist = () => players().map(c => ({ id: c.id, name: c.name, k: c.k, d: c.d, team: c.team }));
+const teamKills = t => players().reduce((a, c) => a + (c.team === t ? c.k : 0), 0);
 function bcast(o, except) { const s = JSON.stringify(o); for (const c of players()) if (c !== except) frame(c.sock, s); }
 
 function onMsg(c, m) {
@@ -71,9 +75,11 @@ function onMsg(c, m) {
     if (c.id >= 0) return;
     const id = slots.indexOf(null);
     if (id < 0) { c.send({ t: 'full' }); c.sock.end(); return; }
-    c.id = id; c.name = String(m.name || 'Piloto').replace(/[<>&"']/g, '').slice(0, 12) || 'Piloto';
+    c.id = id;
+    if (MODE === 'teams') { const n0 = players().filter(p => p.team === 0).length, n1 = players().filter(p => p.team === 1).length; c.team = n0 <= n1 ? 0 : 1; } else c.team = id;
+    c.name = String(m.name || 'Piloto').replace(/[<>&"']/g, '').slice(0, 12) || 'Piloto';
     slots[id] = c;
-    c.send({ t: 'welcome', id, round: { ...round, map: mapIdx }, padsOff: Object.keys(padsOff).map(Number), rocksOff: Object.keys(rocksOff).map(Number) });
+    c.send({ t: 'welcome', id, mode: MODE, team: c.team, round: { ...round, map: mapIdx }, padsOff: Object.keys(padsOff).map(Number), rocksOff: Object.keys(rocksOff).map(Number) });
     bcast({ t: 'joined', id, name: c.name }, c);
     bcast({ t: 'players', list: plist() });
     log(`${c.name} entró (${players().length}/${MAX})`);
@@ -81,7 +87,7 @@ function onMsg(c, m) {
     return;
   }
   if (c.id < 0) return;
-  if (m.t === 'st' || m.t === 'fire' || m.t === 'mis' || m.t === 'mine' || m.t === 'minex') { m.id = c.id; bcast(m, c); }
+  if (m.t === 'st' || m.t === 'fire' || m.t === 'mis' || m.t === 'mine' || m.t === 'minex' || m.t === 'mark') { m.id = c.id; bcast(m, c); }
   else if (m.t === 'pick') {
     const i = m.i | 0; if (i < 0 || i > 15 || padsOff[i]) return;   // el primero que llega se lo queda
     padsOff[i] = Date.now() + PAD_RESPAWN; bcast({ t: 'pick', i, id: c.id });
@@ -93,11 +99,11 @@ function onMsg(c, m) {
   else if (m.t === 'dead') {
     c.d++;
     const by = slots[m.by];
-    const valid = by && by !== c;
+    const valid = by && by !== c && (MODE !== 'teams' || by.team !== c.team);
     if (valid && round.state === 'play') by.k++;
     bcast({ t: 'kill', v: c.id, by: valid ? by.id : -1 });
     bcast({ t: 'players', list: plist() });
-    if (valid && by.k >= WIN_KILLS && round.state === 'play') endRound();
+    if (valid && round.state === 'play' && (MODE === 'teams' ? teamKills(by.team) >= TEAM_WIN : by.k >= WIN_KILLS)) endRound();
   }
 }
 function leave(c) {
@@ -142,7 +148,7 @@ setInterval(() => {
 
 function log(s) { console.log(new Date().toLocaleTimeString() + '  ' + s); }
 srv.listen(PORT, '0.0.0.0', () => {
-  console.log('\n  Escuadrón Cometa — servidor listo\n');
+  console.log('\n  Escuadrón Cometa — servidor listo (' + (MODE === 'teams' ? 'equipos 4 vs 4' : 'todos contra todos') + ', hasta ' + MAX + ' pilotos)\n');
   console.log('  En esta Mac:        http://localhost:' + PORT);
   for (const list of Object.values(os.networkInterfaces()))
     for (const a of list || []) if (a.family === 'IPv4' && !a.internal) console.log('  En tu red (Wi-Fi):  http://' + a.address + ':' + PORT);
