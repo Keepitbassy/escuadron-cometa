@@ -2,10 +2,11 @@
 // Uso:  node server.js        (puerto 8080; otro: PORT=3000 node server.js)
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
 const PORT = Number(process.env.PORT) || 8080;
-const MAX = 4, ROUND_SECS = 180, WIN_KILLS = 10, PAUSE_SECS = 8, MAP_COUNT = 5;
-// Mapa: 4 = Cinturón de asteroides. Con ROTAR_MAPAS=1 cambia en cada ronda.
+const MAX = 4, ROUND_SECS = 180, WIN_KILLS = 10, PAUSE_SECS = 8, MAP_COUNT = 4;
+// Mapas: 0 Mar helado, 1 Ruinas orbitales, 2 Cinturón de asteroides, 3 Nebulosa carmesí.
+// Por defecto: 2. Con ROTAR_MAPAS=1 cambia en cada ronda.
 const ROTATE = !!process.env.ROTAR_MAPAS;
-let mapIdx = ROTATE ? 0 : 4, played = false;
+let mapIdx = ROTATE ? 0 : 2, played = false;
 const PAD_RESPAWN = 25000, ROCK_RESPAWN = 45000;
 let padsOff = {}, rocksOff = {}; // índice -> momento en que reaparece
 

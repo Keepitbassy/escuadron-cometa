@@ -30,9 +30,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1
 #ret::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px;background:currentColor;border-radius:50%}
 #ret.lock{border-color:var(--or);color:var(--or);width:44px;height:44px;margin:-22px 0 0 -22px}
 #hurt{position:fixed;inset:0;pointer-events:none;z-index:1;box-shadow:inset 0 0 120px 40px #ff2a2a;opacity:0}
-#overlay{position:fixed;inset:0;z-index:5;display:grid;place-items:center;padding:20px;background:radial-gradient(ellipse at 50% 115%,#ff4fa04d,transparent 60%),linear-gradient(#0b0a24e6,#1a0f3ae6)}
+#overlay{position:fixed;inset:0;z-index:5;display:flex;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:20px;background:radial-gradient(ellipse at 50% 115%,#ff4fa04d,transparent 60%),linear-gradient(#0b0a24e6,#1a0f3ae6)}
 #overlay.off{display:none}
-.card{max-width:520px;text-align:center}
+.card{max-width:520px;text-align:center;margin:auto}
 h1{font-size:clamp(38px,9vw,52px);line-height:1.05;margin:0 0 10px;text-wrap:balance;letter-spacing:.5px}
 p{margin:0 0 12px;color:#c9cdf0}
 .keys{font-size:14px;color:var(--dim);margin:14px 0 6px}
@@ -86,7 +86,7 @@ button:focus-visible{outline:3px solid #fff;outline-offset:3px}
   <div id="menu"><div id="netbox" hidden><input id="name" maxlength="12" placeholder="Tu nombre de piloto" autocomplete="off"><button id="goNet">Jugar en línea</button></div>
   <div class="maps" id="maps"></div>
   <button id="go">Contra bots</button></div>
-  <p class="small">Prototipo 1.0 · hasta 4 pilotos en línea · en línea se juega en el Cinturón de asteroides</p>
+  <p class="small">Prototipo 1.1 · hasta 4 pilotos en línea · en línea se juega en el Cinturón de asteroides</p>
 </div></div>
 <!--NET-->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -165,14 +165,15 @@ let R=700,CEIL=380,mapIdx=0;
 let seed=1;const sr=()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296},srnd=a=>(sr()*2-1)*a;
 // Mapas: R = mitad del ancho, C = techo
 const MAPS=[
- {n:'Agujas de cristal',size:'Mediano',R:700,C:380,sky:0x150d38,fog:[250,1300],gnd:0x1d1145,g1:0x2ee6d6,g2:0x3d2c80,wall:0xff4fa0,moon:0xff6a8a,spires:34,shape:'spire',sc:0x5b3fd1,se:0x1a0b40,h:[60,270],r:[10,26],rocks:22,rk:0x8d6b5c,rs:[8,24]},
- {n:'Cañón rojo',size:'Chico',R:420,C:300,sky:0x3a1622,fog:[150,800],gnd:0x5a2a1a,g1:0xffb347,g2:0x7a3a24,wall:0xffd34d,moon:0xffc48a,spires:24,shape:'mesa',sc:0xb4512e,se:0x2a0c04,h:[50,170],r:[18,40],rocks:6,rk:0x9a5a3c,rs:[6,14]},
- {n:'Arena neón',size:'Mini',R:260,C:220,sky:0x07121f,fog:[120,650],gnd:0x0a1a2c,g1:0x2ee6d6,g2:0x123a5a,wall:0x2ee6d6,moon:0x7af0ff,spires:6,shape:'pillar',sc:0x1b6b8a,se:0x0e4a66,h:[120,200],r:[8,12],rocks:4,rk:0x4a6a8a,rs:[6,10]},
- {n:'Mar helado',size:'Grande',R:950,C:450,sky:0x8fc7e8,fog:[350,1700],gnd:0x1e5a86,g1:0xdff6ff,g2:0x2a6f9c,wall:0xffffff,moon:0xfff6d8,stars:false,spires:40,shape:'ice',sc:0xe8f6ff,se:0x203a50,h:[40,160],r:[20,45],rocks:10,rk:0xcfe8f5,rs:[10,22]},
- {n:'Cinturón de asteroides',size:'Enorme',R:1200,C:800,sky:0x05040c,fog:[400,2300],gnd:0x0b0a16,g1:0x6a5acd,g2:0x1a1630,wall:0xb08cff,moon:0xffa24a,spires:0,rocks:120,rk:0x7a6a62,rs:[6,34]}
+ {n:'Mar helado',size:'Grande',R:950,C:450,sky:0x8fc7e8,fog:[350,1700],gnd:0x1e5a86,g1:0xdff6ff,g2:0x2a6f9c,wall:0xffffff,moon:0xfff6d8,stars:false,spires:40,shape:'ice',sc:0xe8f6ff,se:0x203a50,h:[40,160],r:[20,45],rocks:10,rk:0xcfe8f5,rs:[10,22],
+  skyTop:0x3f8fd0,neb:[0xffffff],bright:true},
+ {n:'Ruinas orbitales',size:'Grande',R:1000,C:600,sky:0x0a1426,fog:[350,1900],gnd:0x0a1020,g1:0x2ec0ff,g2:0x15233f,wall:0x2ec0ff,moon:0x9fd8ff,spires:14,shape:'pillar',sc:0x2a3448,se:0x0a3a5a,h:[180,420],r:[14,24],rocks:70,rk:0x5d6a7e,rkE:0x0a1a2a,rockShape:'debris',rs:[8,30],
+  skyTop:0x01030a,neb:[0x2ec0ff,0x4060ff]},
+ {n:'Cinturón de asteroides',size:'Enorme',R:1200,C:800,sky:0x05040c,fog:[400,2300],gnd:0x0b0a16,g1:0x6a5acd,g2:0x1a1630,wall:0xb08cff,moon:0xffa24a,spires:0,rocks:120,rk:0x7a6a62,rs:[6,34],
+  skyTop:0x020108,neb:[0x6a3cff,0xff4f9a,0x2ec0ff,0xffa24a]},
+ {n:'Nebulosa carmesí',size:'Enorme',R:1300,C:900,sky:0x240814,fog:[450,2600],gnd:0x14040c,g1:0xff2e63,g2:0x3a0c1e,wall:0xff8a3d,moon:0xffd0a0,spires:0,rocks:95,rk:0xb02a5c,rkE:0x3a0418,rockShape:'crystal',rs:[8,36],
+  skyTop:0x0a0006,neb:[0xff2e63,0xff8a3d,0x9b2cff]}
 ];
-Object.assign(MAPS[0],{skyTop:0x05031a,neb:[0xff4fa0,0x5b3fd1,0x2ee6d6]});Object.assign(MAPS[1],{skyTop:0x120610,neb:[0xff7a2f,0xffd34d]});Object.assign(MAPS[2],{skyTop:0x02060c,neb:[0x2ee6d6,0x1b6b8a]});
-Object.assign(MAPS[3],{skyTop:0x3f8fd0,neb:[0xffffff],bright:true});Object.assign(MAPS[4],{skyTop:0x020108,neb:[0x6a3cff,0xff4f9a,0x2ec0ff,0xffa24a]});
 const spires=[],rocks=[],pads=[];let world=null,SPAWNS=[];
 // power-ups
 const PW={rep:{c:0x4dff88,n:'Reparación'},tri:{c:0xffd34d,n:'Láser triple'},mis:{c:0xff4f6a,n:'Misiles'},tur:{c:0x4fb8ff,n:'Turbo infinito'},cam:{c:0xb98cff,n:'Camuflaje'},min:{c:0xff8a3d,n:'Minas'}},PT=['rep','tri','mis','tur','cam','min'];
@@ -189,9 +190,16 @@ function makePad(type){const g=new THREE.Group(),c=PW[type].c,core=new THREE.Mes
 let stars,moon;
 {const pts=[];for(let i=0;i<1400;i++){const t=Math.random()*Math.PI*2,u=Math.random()*.95+.05,r=2600;const q=Math.sqrt(1-u*u);pts.push(Math.cos(t)*q*r,u*r,Math.sin(t)*q*r)}
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
- stars=new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:3,sizeAttenuation:false,fog:false}));scene.add(stars);
+ const cols=new Float32Array(pts.length);for(let i=0;i<cols.length;i+=3){const k=.35+Math.random()*.35,t=Math.random();cols[i]=k*(t<.2?1:.85);cols[i+1]=k*.9;cols[i+2]=k*(t>.8?1:.95)}g.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+ stars=new THREE.Group();stars.add(new THREE.Points(g,new THREE.PointsMaterial({size:1.4,vertexColors:true,sizeAttenuation:false,fog:false})));
+ {const p2=[];for(let i=0;i<120;i++){const t=Math.random()*Math.PI*2,u=Math.random()*.95+.05,r=2600,q=Math.sqrt(1-u*u);p2.push(Math.cos(t)*q*r,u*r,Math.sin(t)*q*r)}
+  const g2=new THREE.BufferGeometry();g2.setAttribute('position',new THREE.Float32BufferAttribute(p2,3));stars.add(new THREE.Points(g2,new THREE.PointsMaterial({color:0xc8d2ff,size:2.2,sizeAttenuation:false,fog:false})))}
+ scene.add(stars);
  moon=new THREE.Mesh(new THREE.SphereGeometry(260,24,16),new THREE.MeshBasicMaterial({color:0xff6a8a,fog:false}));moon.position.set(-600,620,-2800);scene.add(moon)}
-function rockGeo(sz,sd){const g=new THREE.IcosahedronGeometry(sz,1),p=g.attributes.position,r=mul(sd+17),mp={};
+function rockGeo(sz,sd,shape){const r=mul(sd+17);
+ if(shape==='debris'){const g=r()<.6?new THREE.BoxGeometry(sz*(1.1+r()*.8),sz*(.35+r()*.5),sz*(.8+r()*.6)):new THREE.CylinderGeometry(sz*.45,sz*.45,sz*1.7,8);g.rotateX(r()*3);g.rotateY(r()*3);return g}
+ if(shape==='crystal'){const g=new THREE.OctahedronGeometry(sz*.85,0);g.scale(1,1.7,1);g.rotateZ((r()-.5)*1.2);return g}
+ const g=new THREE.IcosahedronGeometry(sz,1),p=g.attributes.position,mp={};
  for(let i=0;i<p.count;i++){const key=p.getX(i).toFixed(2)+','+p.getY(i).toFixed(2)+','+p.getZ(i).toFixed(2);if(!(key in mp))mp[key]=.78+r()*.4;const f=mp[key];p.setXYZ(i,p.getX(i)*f,p.getY(i)*f,p.getZ(i)*f)}
  g.computeVertexNormals();return g}
 function buildMap(i){mapIdx=((i%MAPS.length)+MAPS.length)%MAPS.length;const m=MAPS[mapIdx];
@@ -210,8 +218,8 @@ function buildMap(i){mapIdx=((i%MAPS.length)+MAPS.length)%MAPS.length;const m=MA
   if(Math.hypot(x,z)<Math.min(130,R*.3))continue;if(spires.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+r+25))continue;
   const geo=m.shape==='mesa'?new THREE.CylinderGeometry(r*.85,r,h,7):m.shape==='pillar'?new THREE.CylinderGeometry(r,r,h,8):m.shape==='ice'?new THREE.ConeGeometry(r,h,5):new THREE.CylinderGeometry(r*.3,r,h,6);
   const o=new THREE.Mesh(geo,spMat);o.position.set(x,h/2,z);world.add(o);spires.push({x,z,r,h})}
- const rkMat=new THREE.MeshStandardMaterial({color:m.rk,flatShading:true,roughness:.9});
- for(let k=0;k<m.rocks;k++){const sz=m.rs[0]+sr()*(m.rs[1]-m.rs[0]),o=new THREE.Mesh(rockGeo(sz,mapIdx*1000+k),rkMat);
+ const rkMat=new THREE.MeshStandardMaterial({color:m.rk,flatShading:true,roughness:m.rockShape==='crystal'?.25:m.rockShape==='debris'?.5:.9,metalness:m.rockShape?.4:0,emissive:m.rkE||0});
+ for(let k=0;k<m.rocks;k++){const sz=m.rs[0]+sr()*(m.rs[1]-m.rs[0]),o=new THREE.Mesh(rockGeo(sz,mapIdx*1000+k,m.rockShape),rkMat);
   o.position.set(srnd(R-sz-20),Math.max(40,CEIL*.18)+sr()*(CEIL*.78-Math.max(40,CEIL*.18)),srnd(R-sz-20));
   if(o.position.length()<sz+60){k--;continue}
   o.userData.spin=new THREE.Vector3(sr(),sr(),0).multiplyScalar(.4);world.add(o);const hp=Math.round(sz*2.2);rocks.push({m:o,s:sz,hp,max:hp,dead:false,rt:0,i:rocks.length})}
@@ -220,8 +228,8 @@ function buildMap(i){mapIdx=((i%MAPS.length)+MAPS.length)%MAPS.length;const m=MA
    if(spires.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+25&&y<o.h+20))continue;if(rocks.some(o=>o.m.position.distanceTo(new THREE.Vector3(x,y,z))<o.s+25))continue;
    const type=PT[pads.length%3],g=makePad(type);g.position.set(x,y,z);world.add(g);pads.push({i:pads.length,type,g,on:true,rt:0,pend:0})}}
  const c=R*.74;SPAWNS=[[-c,-c],[c,c],[-c,c],[c,-c]];
- try{localStorage.setItem('ec-map',mapIdx)}catch(e){}}
-{let saved=4;try{const v=localStorage.getItem('ec-map');if(v!==null)saved=+v}catch(e){}buildMap(saved)}
+ try{localStorage.setItem('ec-map2',mapIdx)}catch(e){}}
+{let saved=2;try{const v=localStorage.getItem('ec-map2');if(v!==null)saved=+v}catch(e){}buildMap(saved)}
 
 function makeShip(col){
  const g=new THREE.Group(),v=new THREE.Group();g.add(v);
