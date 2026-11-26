@@ -72,7 +72,7 @@ const FILL = MODE === 'teams' ? MAX : Math.min(MAX, Math.max(0, Number(process.e
 const BOT_NAMES = ['Vega', 'Orión', 'Kira', 'Nova', 'Rix', 'Lumen', 'Sable', 'Atlas'];
 const all = () => slots.filter(Boolean);
 const humans = () => all().filter(c => !c.bot);
-const plist = () => all().map(c => ({ id: c.id, name: c.name, k: c.k, d: c.d, team: c.team, bot: !!c.bot }));
+const plist = () => all().map(c => ({ id: c.id, name: c.name, k: c.k, d: c.d, team: c.team, bot: !!c.bot, ship: c.ship | 0 }));
 const teamKills = t => all().reduce((a, c) => a + (c.team === t ? c.k : 0), 0);
 const teamSize = t => all().filter(c => c.team === t).length;
 function bcast(o, except) { const s = JSON.stringify(o); for (const c of humans()) if (c !== except) frame(c.sock, s); }
@@ -90,7 +90,7 @@ function fillBots() {
     const id = slots.indexOf(null); if (id < 0) break;
     const used = new Set(all().map(c => c.name));
     const name = (BOT_NAMES.find(n => !used.has(n + ' (bot)')) || 'Bot ' + id) + ' (bot)';
-    slots[id] = { id, name, k: 0, d: 0, bot: true, team: MODE === 'teams' ? (teamSize(0) <= teamSize(1) ? 0 : 1) : id };
+    slots[id] = { id, name, k: 0, d: 0, bot: true, ship: [1, 2, 3, 0, 3, 1, 2, 0][id],  team: MODE === 'teams' ? (teamSize(0) <= teamSize(1) ? 0 : 1) : id };
   }
 }
 function updateHost() {
@@ -114,6 +114,7 @@ function onMsg(c, m) {
       removeSlot(b); id = b.id; if (MODE === 'teams') team = b.team;
     }
     c.id = id; c.team = MODE === 'teams' ? team : id; c.k = 0; c.d = 0;
+    c.ship = Math.max(0, Math.min(3, m.ship | 0));
     c.name = String(m.name || 'Piloto').replace(/[<>&"']/g, '').slice(0, 12) || 'Piloto';
     slots[id] = c;
     c.send({ t: 'welcome', id, mode: MODE, team: c.team, round: { ...round, map: mapIdx }, padsOff: Object.keys(padsOff).map(Number), rocksOff: Object.keys(rocksOff).map(Number) });

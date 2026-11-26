@@ -55,6 +55,10 @@ p{margin:0 0 12px;color:#c9cdf0}
 label{display:inline-flex;gap:8px;align-items:center;font-size:15px;min-height:44px;margin-bottom:10px;cursor:pointer}
 input[type=checkbox]{width:20px;height:20px;accent-color:var(--cy)}
 button{font:inherit;font-weight:700;font-size:18px;min-height:52px;padding:0 34px;border-radius:12px;border:0;background:var(--cy);color:#04121a;cursor:pointer}
+.maps{
+}#shipbox{margin:0 0 6px}#prev{width:300px;height:150px;max-width:100%;display:block;margin:0 auto}
+#stats{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;max-width:300px;margin:4px auto 8px;font-size:13px;text-align:left;color:var(--dim)}
+#stats i{display:block;height:8px;border-radius:4px;background:var(--cy);align-self:center}
 .maps{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:4px 0 14px}
 .chip{min-height:44px;padding:6px 12px;font-size:14px;font-weight:500;background:#ffffff14;color:var(--ink);border:1px solid #ffffff33;border-radius:10px;display:flex;flex-direction:column;align-items:center;line-height:1.2}
 .chip small{color:var(--dim);font-size:12px}.chip.on{background:var(--cy);color:#04121a;border-color:var(--cy)}.chip.on small{color:#04121a}
@@ -96,15 +100,16 @@ button:focus-visible{outline:3px solid #fff;outline-offset:3px}
   <p id="sub">Batalla aérea todos contra todos. Contra bots o con amigos en línea. Gana quien llegue a 10 derribos o lleve más al terminar los 3 minutos.</p>
   <div id="res"></div>
   <div class="keys"><kbd>W A S D</kbd> o flechas: volar · <kbd>Espacio</kbd>: disparar · <kbd>Shift</kbd>: turbo · <kbd>C</kbd>: freno · <kbd>F</kbd>: arma especial · <kbd>Q</kbd>/<kbd>E</kbd>: inclinar (doble toque: giro evasivo) · <kbd>Z</kbd>: loop · <kbd>X</kbd>: media vuelta</div>
-  <div class="keys">Mando: stick izquierdo vuela · <kbd>✕</kbd> dispara · <kbd>R1</kbd> turbo · <kbd>L1</kbd> freno · <kbd>○</kbd> arma especial · <kbd>L2</kbd>/<kbd>R2</kbd> inclinar (doble toque: giro evasivo) · <kbd>△</kbd> loop · <kbd>□</kbd> media vuelta · <kbd>←</kbd><kbd>→</kbd> cambia el mapa · <kbd>✕</kbd> u <kbd>Options</kbd> para empezar</div>
+  <div class="keys">Mando: stick izquierdo vuela · <kbd>✕</kbd> dispara · <kbd>R1</kbd> turbo · <kbd>L1</kbd> freno · <kbd>○</kbd> arma especial · <kbd>L2</kbd>/<kbd>R2</kbd> inclinar (doble toque: giro evasivo) · <kbd>△</kbd> loop · <kbd>□</kbd> media vuelta · <kbd>L1</kbd><kbd>R1</kbd> cambia la nave · <kbd>←</kbd><kbd>→</kbd> cambia el mapa · <kbd>✕</kbd> u <kbd>Options</kbd> para empezar</div>
   <p class="small" style="margin:0 0 6px">El giro evasivo rebota disparos. El loop te pone detrás de quien te persigue y la media vuelta te regresa en sentido contrario; cada uno gasta un tercio del turbo. Inclinarte cierra las curvas y frenar las cierra todavía más. Recoge esferas: verde repara, amarilla láser triple, roja misiles, azul turbo infinito, morada camuflaje y naranja minas. También hay escudo (celeste), disparo rápido (rosa) y daño doble (rojo). El escudo no se repara solo: busca la esfera verde. El giro evasivo tarda 3.5 s en recargar y el loop o la media vuelta, 5 s. Los asteroides se pueden destruir.</p>
   <label><input type="checkbox" id="inv"> Invertir eje vertical (estilo avión)</label><br>
   <label><input type="checkbox" id="hq"> Gráficos altos (resplandor y más partículas)</label><br>
   <div id="menu"><div id="netbox" hidden><input id="name" maxlength="12" placeholder="Tu nombre de piloto" autocomplete="off"><button id="goNet">Jugar en línea</button></div>
+  <div id="shipbox"><canvas id="prev" width="300" height="150"></canvas><div class="maps" id="shipsel"></div><div id="stats"></div></div>
   <div class="maps" id="modes"></div>
   <div class="maps" id="maps"></div>
   <button id="go">Contra bots</button></div>
-  <p class="small">Prototipo 1.4 · hasta 8 pilotos en línea · en línea se juega en el Cinturón de asteroides</p>
+  <p class="small">Prototipo 1.5 · hasta 8 pilotos en línea · en línea se juega en el Cinturón de asteroides</p>
 </div></div>
 <!--NET-->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -252,39 +257,75 @@ function buildMap(i){mapIdx=((i%MAPS.length)+MAPS.length)%MAPS.length;const m=MA
  try{localStorage.setItem('ec-map2',mapIdx)}catch(e){}}
 {let saved=2;try{const v=localStorage.getItem('ec-map2');if(v!==null)saved=+v}catch(e){}buildMap(saved)}
 
-function makeShip(col){
+// Naves: cada una con su silueta y sus estadísticas
+const SHIPS=[
+ {n:'Cometa',d:'Equilibrada',hp:100,spd:1,agi:1,hr:30,bub:6.5,cam:1},
+ {n:'Aguja',d:'Rápida y frágil',hp:75,spd:1.18,agi:1.08,hr:20,bub:6,cam:.95},
+ {n:'Bastión',d:'Blindada y lenta',hp:150,spd:.85,agi:.8,hr:46,bub:8,cam:1.3},
+ {n:'Mantarraya',d:'La más ágil',hp:90,spd:.97,agi:1.3,hr:36,bub:7.5,cam:1.12}];
+const ST=s=>SHIPS[s.type||0];
+function makeShip(col,type=0,parent=scene){
  const g=new THREE.Group(),v=new THREE.Group();g.add(v);
  const body=new THREE.MeshStandardMaterial({color:0xdfe6f5,flatShading:true,metalness:.3,roughness:.5});
+ const dark=new THREE.MeshStandardMaterial({color:0x2a3040,flatShading:true,metalness:.6,roughness:.4});
+ const glass=new THREE.MeshStandardMaterial({color:0x10204a,metalness:.8,roughness:.2});
  const paint=new THREE.MeshStandardMaterial({color:col,flatShading:true,roughness:.5});
  const bright=new THREE.Color(col).lerp(new THREE.Color(0xffffff),.35),glow=new THREE.MeshBasicMaterial({color:bright});
  const flameMat=new THREE.MeshBasicMaterial({color:bright,transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false}),flames=[];
- const add=(geo,mat,x,y,z,rx)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);if(rx)m.rotation.x=rx;v.add(m);return m};
- add(new THREE.ConeGeometry(1.1,6,5),body,0,0,1.5,Math.PI/2);
- add(new THREE.SphereGeometry(.8,6,4),new THREE.MeshStandardMaterial({color:0x10204a,metalness:.8,roughness:.2}),0,.6,.4).scale.set(1,.7,1.6);
- add(new THREE.BoxGeometry(7.5,.25,2.2),paint,0,0,-1.2);
- for(const s of[-1,1]){add(new THREE.CylinderGeometry(.55,.7,4.4,6),body,3.6*s,0,-.8,Math.PI/2);add(new THREE.ConeGeometry(.55,1.4,6),paint,3.6*s,0,2.1,Math.PI/2);add(new THREE.SphereGeometry(.55,6,4),glow,3.6*s,0,-3.1)}
- add(new THREE.BoxGeometry(.2,1.8,1.8),paint,0,1,-2.2);
- for(const sd of[-1,1]){const fg=new THREE.ConeGeometry(.5,3,6);fg.translate(0,-1.5,0);const f=new THREE.Mesh(fg,flameMat);f.rotation.x=Math.PI/2;f.position.set(3.6*sd,0,-3.3);v.add(f);flames.push(f)}
- add(new THREE.SphereGeometry(.22,6,4),new THREE.MeshBasicMaterial({color:0xff3b3b}),3.78,0,-1.2);add(new THREE.SphereGeometry(.22,6,4),new THREE.MeshBasicMaterial({color:0x3bff6a}),-3.78,0,-1.2);
- const bub=new THREE.Mesh(new THREE.SphereGeometry(6.5,20,14),new THREE.MeshBasicMaterial({color:0x9ff0ff,transparent:true,opacity:.18,blending:THREE.AdditiveBlending,depthWrite:false}));bub.visible=false;g.add(bub);
- scene.add(g);return{g,v,flames,bub,paint,glow,flameMat,trail:bright.getHex()};
+ const add=(geo,mat,x,y,z,rx,ry,rz)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx||0,ry||0,rz||0);v.add(m);return m};
+ const flame=(x,y,z,r=.5,l=3)=>{const fg=new THREE.ConeGeometry(r,l,6);fg.translate(0,-l/2,0);const f=new THREE.Mesh(fg,flameMat);f.rotation.x=Math.PI/2;f.position.set(x,y,z);v.add(f);flames.push(f)};
+ const nav=(x,y,z)=>{add(new THREE.SphereGeometry(.22,6,4),new THREE.MeshBasicMaterial({color:0xff3b3b}),x,y,z);add(new THREE.SphereGeometry(.22,6,4),new THREE.MeshBasicMaterial({color:0x3bff6a}),-x,y,z)};
+ if(type===1){ // Aguja: fuselaje largo, alas delta pequeñas, un solo motor
+  add(new THREE.ConeGeometry(.75,7,6),body,0,0,2.6,Math.PI/2);
+  add(new THREE.CylinderGeometry(.75,.9,3.4,6),body,0,0,-2.6,Math.PI/2);
+  add(new THREE.SphereGeometry(.6,6,4),glass,0,.45,1.6).scale.set(.9,.6,2.2);
+  for(const sd of[-1,1]){const w=add(new THREE.BoxGeometry(3.2,.18,1.6),paint,sd*1.9,0,-2.2,0,sd*.55,0);
+   add(new THREE.BoxGeometry(.16,1.4,1.3),paint,sd*.7,.8,-3.6,0,0,sd*.35)}
+  add(new THREE.SphereGeometry(.6,6,4),glow,0,0,-4.3);flame(0,0,-4.4,.65,3.6);nav(3.2,0,-2.9);
+ }else if(type===2){ // Bastión: casco de bloque, placas laterales, cuatro motores
+  add(new THREE.BoxGeometry(3.4,1.7,6.5),body,0,0,-.4);
+  add(new THREE.BoxGeometry(3,1.1,2.2),body,0,-.15,3.4,-.32,0,0);add(new THREE.BoxGeometry(1.6,.5,1.4),paint,0,.45,3.7,-.32,0,0);
+  add(new THREE.BoxGeometry(2,.7,1.4),glass,0,1.05,1.3);
+  for(const sd of[-1,1]){add(new THREE.BoxGeometry(1.4,2.3,5.6),paint,sd*2.4,0,-.6);add(new THREE.BoxGeometry(.5,.5,2.4),dark,sd*2.4,1.4,1.8);
+   for(const y of[-.55,.55]){add(new THREE.CylinderGeometry(.5,.5,1,8),dark,sd*1.05,y,-4.1,Math.PI/2);add(new THREE.SphereGeometry(.38,6,4),glow,sd*1.05,y,-4.6);flame(sd*1.05,y,-4.7,.34,2.2)}}
+  nav(3.15,1.1,-.6);
+ }else if(type===3){ // Mantarraya: ala volante plana
+  const sh=new THREE.Shape([[0,4.2],[2,1.6],[5.2,-1.2],[3.8,-2.1],[1.4,-1.7],[0,-3.1],[-1.4,-1.7],[-3.8,-2.1],[-5.2,-1.2],[-2,1.6]].map(q=>new THREE.Vector2(q[0],q[1])));
+  const wg=new THREE.ExtrudeGeometry(sh,{depth:.45,bevelEnabled:false});wg.rotateX(Math.PI/2);wg.translate(0,.22,0);add(wg,paint,0,0,0);
+  add(new THREE.SphereGeometry(1,8,5),body,0,.25,.4).scale.set(1.1,.55,2.6);add(new THREE.SphereGeometry(.55,6,4),glass,0,.75,1.1).scale.set(.9,.6,1.6);
+  for(const sd of[-1,1]){add(new THREE.CylinderGeometry(.45,.55,2.6,7),dark,sd*1.3,-.35,-1.6,Math.PI/2);add(new THREE.SphereGeometry(.45,6,4),glow,sd*1.3,-.35,-2.95);flame(sd*1.3,-.35,-3,.45,3)}
+  nav(5.05,.25,-1.2);
+ }else{ // Cometa: la original de dos cascos
+  add(new THREE.ConeGeometry(1.1,6,5),body,0,0,1.5,Math.PI/2);
+  add(new THREE.SphereGeometry(.8,6,4),glass,0,.6,.4).scale.set(1,.7,1.6);
+  add(new THREE.BoxGeometry(7.5,.25,2.2),paint,0,0,-1.2);
+  for(const sd of[-1,1]){add(new THREE.CylinderGeometry(.55,.7,4.4,6),body,3.6*sd,0,-.8,Math.PI/2);add(new THREE.ConeGeometry(.55,1.4,6),paint,3.6*sd,0,2.1,Math.PI/2);add(new THREE.SphereGeometry(.55,6,4),glow,3.6*sd,0,-3.1);flame(3.6*sd,0,-3.3)}
+  add(new THREE.BoxGeometry(.2,1.8,1.8),paint,0,1,-2.2);nav(3.78,0,-1.2);
+ }
+ const bub=new THREE.Mesh(new THREE.SphereGeometry(SHIPS[type].bub,20,14),new THREE.MeshBasicMaterial({color:0x9ff0ff,transparent:true,opacity:.18,blending:THREE.AdditiveBlending,depthWrite:false}));bub.visible=false;g.add(bub);
+ parent.add(g);return{g,v,flames,bub,paint,glow,flameMat,trail:bright.getHex()};
 }
+let myShip=0;try{myShip=+(localStorage.getItem('ec-ship')||0)%4}catch(e){}
+const BOTSHIP=[0,1,2,3,3,1,2,0];
 const ROSTER=[{n:'Tú',c:0x2ee6d6,bot:false},{n:'Vega',c:0xff7a2f,bot:true},{n:'Orión',c:0xe04fff,bot:true},{n:'Kira',c:0xc6ff3d,bot:true},{n:'Nova',c:0xff4fa0,bot:true},{n:'Rix',c:0xffd34d,bot:true},{n:'Lumen',c:0x4f8bff,bot:true},{n:'Sable',c:0xe8e8ff,bot:true}];
 const TEAMC=[0x2e9fff,0xff4a3d],TEAMN=['Azul','Rojo'],TEAMCSS=['#5fb4ff','#ff6b5e'],PALS=[[0x2ee6d6,0x7af0ff,0x8dff6a,0xa98bff],[0xff7a2f,0xffd34d,0xff6ad5,0xff3b5c]];
 let gmode='ffa',nPil=4;try{gmode=localStorage.getItem('ec-mode')||'ffa';nPil=+(localStorage.getItem('ec-pil')||4)}catch(e){}let menuMode=gmode,menuPil=nPil;
 const local=s=>s===P||(s.bot&&!s.remote);
 const ally=(a,b)=>a!==b&&gmode==='teams'&&a.team===b.team,foe=(a,b)=>a!==b&&!ally(a,b);
-const ships=ROSTER.map(r=>{const m=makeShip(r.c);return Object.assign({},r,m,{pos:m.g.position,f:new THREE.Vector3(0,0,1),speed:120,hp:100,alive:true,rt:0,cd:0,roll:0,rollDir:1,rollCd:0,bank:0,boost:1,k:0,d:0,tgt:null,tt:0,cinv:0,inv:0,tri:0,mis:0,mcd:0,manCd:0,rap:0,dbl:0,shield:0,shT:0,streak:0,spec:'mis',tur:0,cam:0,calm:0,mineN:0,on:true,remote:false,np:new THREE.Vector3(),nq:new THREE.Quaternion(),nz:0,css:'#'+r.c.toString(16).padStart(6,'0')})});
+const ships=ROSTER.map((r,i)=>{const m=makeShip(r.c,i?BOTSHIP[i]:myShip);return Object.assign({},r,m,{pos:m.g.position,f:new THREE.Vector3(0,0,1),speed:120,hp:100,alive:true,rt:0,cd:0,roll:0,rollDir:1,rollCd:0,bank:0,boost:1,k:0,d:0,tgt:null,tt:0,cinv:0,inv:0,tri:0,mis:0,mcd:0,manCd:0,rap:0,dbl:0,shield:0,shT:0,streak:0,spec:'mis',tur:0,cam:0,calm:0,mineN:0,on:true,remote:false,np:new THREE.Vector3(),nq:new THREE.Quaternion(),nz:0,css:'#'+r.c.toString(16).padStart(6,'0')})});
 let P=ships[0];
 const esc=t=>String(t).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
-ships.forEach((s,i)=>{s.i=i;s.team=i;s.tslot=0;s.markT=0});
+ships.forEach((s,i)=>{s.i=i;s.team=i;s.tslot=0;s.markT=0;s.type=i?BOTSHIP[i]:myShip});
+function setShipType(s,type){type=((type|0)%SHIPS.length+SHIPS.length)%SHIPS.length;if(s.type===type)return;const old=s.g,m=makeShip(s.c,type);
+ m.g.position.copy(old.position);m.g.quaternion.copy(old.quaternion);m.g.visible=old.visible;scene.remove(old);old.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose()});
+ Object.assign(s,m,{pos:m.g.position,type});if(s.cloaked)setCloak(s,1);s.bub.visible=s.shield>0;if(s.hp>ST(s).hp)s.hp=ST(s).hp}
 function recolor(s,c,pc){s.c=c;s.css='#'+c.toString(16).padStart(6,'0');s.paint.color.setHex(pc==null?c:pc);const br=new THREE.Color(c).lerp(new THREE.Color(0xffffff),.35);s.glow.color.copy(br);s.flameMat.color.copy(br);s.trail=br.getHex()}
 function applyColors(){const cnt=[0,0];for(const s of ships){if(gmode==='teams'){const t=s.team&1,k=s.on?cnt[t]++:0;s.tslot=k;recolor(s,PALS[t][k%4],TEAMC[t])}else recolor(s,ROSTER[s.i].c)}}
 function setupRoster(){const n=gmode==='teams'?8:nPil;for(const s of ships){s.on=s.i<n;s.team=gmode==='teams'?s.i%2:s.i;if(!s.on){s.alive=false;s.g.visible=false}}applyColors()}
 const right=f=>new THREE.Vector3().crossVectors(f,UP).normalize();
 function spawn(s){const list=gmode==='teams'?TSP.map(q=>q[s.team%2]):SPAWNS;let best=list[0],bd=-1;
  for(const sp of list){let d=1e9;for(const o of ships)if(o!==s&&o.alive)d=Math.min(d,Math.hypot(o.pos.x-sp[0],o.pos.z-sp[1]));if(d>bd){bd=d;best=sp}}
- s.pos.set(best[0],Math.min(140,CEIL*.5),best[1]);s.f.set(-best[0],0,-best[1]).normalize();s.hp=100;s.alive=true;s.g.visible=true;s.speed=120;s.boost=1;s.roll=0;s.inv=2;s.tgt=null;s.tri=0;s.mis=0;s.rap=0;s.dbl=0;s.shield=0;s.shT=0;s.manCd=0;s.rollCd=0;if(s.bub)s.bub.visible=false;s.tur=0;s.cam=0;s.calm=0;setCloak(s,0)}
+ s.pos.set(best[0],Math.min(140,CEIL*.5),best[1]);s.f.set(-best[0],0,-best[1]).normalize();s.hp=ST(s).hp;s.alive=true;s.g.visible=true;s.speed=120;s.boost=1;s.roll=0;s.inv=2;s.tgt=null;s.tri=0;s.mis=0;s.rap=0;s.dbl=0;s.shield=0;s.shT=0;s.manCd=0;s.rollCd=0;if(s.bub)s.bub.visible=false;s.tur=0;s.cam=0;s.calm=0;setCloak(s,0)}
 
 // --- audio ---
 let ac=null;
@@ -344,7 +385,7 @@ function manUpdate(s,dt){const m=s.man;m.t+=dt;const k=Math.min(1,m.t/m.dur);let
 // --- flight ---
 function steer(s,yi,pi,dt,rate,bankT){s.f.applyAxisAngle(UP,-yi*rate*dt);s.f.applyAxisAngle(right(s.f),pi*rate*.8*dt);
  if(Math.abs(s.f.y)>.88)s.f.y=Math.sign(s.f.y)*.88;s.f.normalize();s.bank+=((bankT===undefined?yi*.8:bankT)-s.bank)*Math.min(1,dt*5)}
-function moveShip(s,dt,boosting,braking){const on=boosting&&s.boost>0,br=!on&&braking&&s.boost>0;s.speed+=((on?220:br?62:120)-s.speed)*Math.min(1,dt*3);
+function moveShip(s,dt,boosting,braking){const on=boosting&&s.boost>0,br=!on&&braking&&s.boost>0;s.speed+=((on?220:br?62:120)*ST(s).spd-s.speed)*Math.min(1,dt*3);
  s.boost=s.tur>0?1:on?Math.max(0,s.boost-dt*.45):br?Math.max(0,s.boost-dt*.35):Math.min(1,s.boost+dt*.18);
  if(s.man)manUpdate(s,dt);
  s.pos.addScaledVector(s.f,s.speed*dt);let spin=0;
@@ -365,14 +406,14 @@ function nearest(s){let b=null,bd=1e9;for(const o of ships){if(!foe(s,o)||!o.ali
 function bot(s,dt){
  s.tt-=dt;if(s.tt<=0||!s.tgt||!s.tgt.alive){s.tgt=nearest(s);s.tt=2+Math.random()*2}
  const t=s.tgt,d=t?leadDir(s.pos,t,0):s.f.clone(),ahead=s.pos.clone().addScaledVector(s.f,70),Rv=right(s.f);
- {const pg=s.hp<55?nearPad(s,'rep',800):(!t||s.pos.distanceTo(t.pos)>600?nearPad(s,null,400):null);if(pg)d.copy(pg.g.position).sub(s.pos).normalize()}
+ {const pg=s.hp<ST(s).hp*.55?nearPad(s,'rep',800):(!t||s.pos.distanceTo(t.pos)>600?nearPad(s,null,400):null);if(pg)d.copy(pg.g.position).sub(s.pos).normalize()}
  if(ahead.y<35)d.y+=1.2;
  for(const p of spires)if(ahead.y<p.h+12&&Math.hypot(ahead.x-p.x,ahead.z-p.z)<p.r+20){d.y+=1.5;d.addScaledVector(Rv,1)}
  for(const r of rocks)if(!r.dead&&ahead.distanceTo(r.m.position)<r.s+18){d.y+=1;d.addScaledVector(Rv,-1)}
  if(Math.abs(ahead.x)>R-40||Math.abs(ahead.z)>R-40||ahead.y>CEIL-25)d.set(-s.pos.x,CEIL*.45-s.pos.y,-s.pos.z);
  d.normalize();let yi=d.dot(Rv)*3;const pi=(d.y-s.f.y)*3;if(d.dot(s.f)<0)yi=yi>=0?1:-1;
  const dist=t?s.pos.distanceTo(t.pos):0;
- if(!s.man){if(t&&dist<280&&d.dot(s.f)<-.5&&s.pos.y>40&&Math.random()<dt*.7)startMan(s,'uturn');else steer(s,clamp(yi),clamp(pi),dt,1.5)}moveShip(s,dt,t&&dist>450&&s.boost>.4);
+ if(!s.man){if(t&&dist<280&&d.dot(s.f)<-.5&&s.pos.y>40&&Math.random()<dt*.7)startMan(s,'uturn');else steer(s,clamp(yi),clamp(pi),dt,1.5*ST(s).agi)}moveShip(s,dt,t&&dist>450&&s.boost>.4);
  if(t&&s.mis>0&&s.mcd<=0){if(s.spec==='min'){if(dist<260&&t.pos.clone().sub(s.pos).normalize().dot(s.f)<-.5)dropMine(s)}else if(dist<750&&t.pos.clone().sub(s.pos).normalize().dot(s.f)>.8)fireMissile(s)}
  if(t&&s.cd<=0&&dist<480&&t.pos.clone().sub(s.pos).normalize().dot(s.f)>.975)fire(s,leadDir(s.pos,t,5))}
 
@@ -391,7 +432,7 @@ function rockDamage(r,a){if(r.dead)return;r.hp-=a;if(r.hp<=0)destroyRock(r,true)
 function destroyRock(r,send){if(!r||r.dead)return;r.dead=true;r.m.visible=false;r.rt=45;burst(r.m.position,r.m.material.color.getHex(),Math.min(30,8+r.s|0),40+r.s*2);burst(r.m.position,0xffa24a,6,30);sfx('boom',{pos:r.m.position});
  if(online&&send)nsend({t:'rockx',i:r.i})}
 function reviveRock(r){if(!r||!r.dead)return;r.dead=false;r.m.visible=true;r.hp=r.max}
-function applyPower(s,type){if(type==='rep')s.hp=Math.min(100,s.hp+50);else if(type==='tri')s.tri=15;else if(type==='mis'){s.spec='mis';s.mis=3}
+function applyPower(s,type){if(type==='rep')s.hp=Math.min(ST(s).hp,s.hp+50);else if(type==='tri')s.tri=15;else if(type==='mis'){s.spec='mis';s.mis=3}
  else if(type==='tur')s.tur=10;else if(type==='cam'){s.cam=12;setCloak(s,1)}else if(type==='shd'){s.shield=60;s.shT=20;if(s.bub)s.bub.visible=true}
  else if(type==='rap')s.rap=12;else if(type==='dbl')s.dbl=12;else{s.spec='min';s.mis=3}
  if(s===P){sfx('ping',P);rumble(150,.3);say({rep:'+50 de escudo',tri:'Láser triple por 15 s',mis:'3 misiles: ○ o F para lanzar',tur:'Turbo infinito por 10 s',cam:'Camuflaje por 12 s: fuera del radar',min:'3 minas: ○ o F para soltarlas',shd:'Escudo: absorbe 60 de daño',rap:'Disparo rápido por 12 s',dbl:'Daño doble por 12 s'}[type],1.8)}}
@@ -409,7 +450,7 @@ function updateWorld(dt){const now=performance.now();
    if(ang>1e-4)cur.lerp(want,Math.min(1,2.3*dt/ang)).normalize();M.v.copy(cur.multiplyScalar(Math.min(320,M.v.length()+140*dt)))}
   M.m.position.addScaledVector(M.v,dt);M.m.lookAt(M.m.position.clone().add(M.v));
   M.tr-=dt;if(M.tr<=0){M.tr=.035;glowS.emit(M.m.position,rnd(3),rnd(3),rnd(3),0xffb070,.5)}
-  if(!dead)for(const s of ships){if(s===M.o||!s.alive||ally(M.o,s))continue;if(M.o===P&&segDist2(s.pos,p0,M.m.position)<49)hitMark();if(segDist2(s.pos,p0,M.m.position)<49){dead=true;
+  if(!dead)for(const s of ships){if(s===M.o||!s.alive||ally(M.o,s))continue;if(M.o===P&&segDist2(s.pos,p0,M.m.position)<ST(s).hr+19)hitMark();if(segDist2(s.pos,p0,M.m.position)<ST(s).hr+19){dead=true;
     if(s.remote)burst(s.pos,0xffa24a,10,40);
     else if(s.roll>0){if(s===P){say('¡Esquivaste el misil!',1.2);sfx('ping',P)}}
     else{damage(s,45,M.o);burst(s.pos,0xffa24a,12,45);if(s===P)rumble(300,.9)}break}}
@@ -494,7 +535,7 @@ addEventListener('gamepaddisconnected',()=>say('Mando desconectado',1.5));
 // --- game flow ---
 let state='menu',time=180;
 function initAudio(){if(!ac){try{ac=new(window.AudioContext||window.webkitAudioContext)()}catch(e){ac=null}}else if(ac.state==='suspended')ac.resume()}
-function resetOffline(){P=ships[0];gmode=menuMode;nPil=menuPil;ships.forEach((s,i)=>{s.bot=ROSTER[i].bot;s.remote=false;s.n=ROSTER[i].n});setupRoster()}
+function resetOffline(){P=ships[0];gmode=menuMode;nPil=menuPil;ships.forEach((s,i)=>{s.bot=ROSTER[i].bot;s.remote=false;s.n=ROSTER[i].n;setShipType(s,i?BOTSHIP[i]:myShip)});setupRoster()}
 function begin(){inv=$('inv').checked;for(const b of bullets)scene.remove(b.m);bullets.length=0;for(const M of missiles)scene.remove(M.m);missiles.length=0;while(mines.length)removeMine(mines[0].id,false);state='play';
  $('overlay').classList.add('off');$('hud').classList.add('on');
  camera.position.copy(P.pos).addScaledVector(P.f,-20).y+=6;camLook.copy(P.pos).addScaledVector(P.f,30);camHold=null;camBack=0}
@@ -515,7 +556,7 @@ function sendState(s=P){nsend({t:'st',...bidOf(s),a:s.alive?1:0,p:s.pos.toArray(
 function connect(){initAudio();const name=$('name').value.trim()||'Piloto';try{localStorage.setItem('ec-name',name)}catch(e){}
  $('sub').textContent='Conectando…';
  try{ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws')}catch(e){$('sub').textContent='No se pudo conectar al servidor';return}
- ws.onopen=()=>nsend({t:'join',name});
+ ws.onopen=()=>nsend({t:'join',name,ship:myShip});
  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}onNet(m)};
  ws.onclose=()=>showMenu(online?'Se perdió la conexión con el servidor.':'No se pudo conectar al servidor.')}
 function onNet(m){
@@ -526,7 +567,7 @@ function onNet(m){
  if(!online)return;
  if(m.t==='players'){const ids=new Set(m.list.map(p=>p.id));
   for(const s of ships){s.on=ids.has(s.i);if(!s.on&&s.remote){s.alive=false;s.g.visible=false}}
-  for(const p of m.list){const s=ships[p.id];s.n=p.id===myId?p.name+' (tú)':p.name;s.k=p.k;s.d=p.d;s.team=p.team!=null?p.team:p.id;s.isBot=!!p.bot}applyColors();syncBots();return}
+  for(const p of m.list){const s=ships[p.id];s.n=p.id===myId?p.name+' (tú)':p.name;s.k=p.k;s.d=p.d;s.team=p.team!=null?p.team:p.id;s.isBot=!!p.bot;if(p.ship!=null)setShipType(s,p.ship)}applyColors();syncBots();return}
  if(m.t==='host'){botSet=new Set(m.bots);syncBots();return}
  if(m.t==='mark'){const a=ships[m.id],v=ships[m.v];if(a&&v&&ally(a,P))v.markT=4;return}
  if(m.t==='joined'){say(m.name+' entró a la arena',2);return}
@@ -550,7 +591,7 @@ function onNet(m){
  if(m.t==='round')applyRound(m.round||m)}
 // Si soy anfitrión, simulo los bots de botSet; si no, todos los demás son remotos.
 function syncBots(){for(const s of ships){if(s===P)continue;const mine=botSet.has(s.i)&&s.on&&s.isBot;
-  if(mine&&s.remote){s.remote=false;s.bot=true;s.tgt=null;s.hp=100;if(!s.alive)spawn(s);else s.f.set(0,0,1).applyQuaternion(s.g.quaternion)}
+  if(mine&&s.remote){s.remote=false;s.bot=true;s.tgt=null;s.hp=ST(s).hp;if(!s.alive)spawn(s);else s.f.set(0,0,1).applyQuaternion(s.g.quaternion)}
   else if(!mine&&!s.remote){s.remote=true;s.bot=false;if(!s.on){s.alive=false;s.g.visible=false}}}}
 function applyRound(m){const r=m.round||m;roundState=r.state;time=r.time;
  if(r.map!=null&&r.map!==mapIdx){buildMap(r.map);renderMaps();if(P.alive&&!r.fresh)spawn(P)}
@@ -579,6 +620,17 @@ const MODES=[{v:'ffa4',n:'Todos contra todos',sz:'4 pilotos'},{v:'ffa8',n:'Todos
 function renderModes(){const cur=menuMode==='teams'?'teams':'ffa'+menuPil;$('modes').innerHTML=MODES.map(m=>`<button class="chip${m.v===cur?' on':''}" data-v="${m.v}">${m.n}<small>${m.sz}</small></button>`).join('')}
 function pickMode(v){if(online)return;menuMode=v==='teams'?'teams':'ffa';menuPil=v==='ffa8'?8:4;try{localStorage.setItem('ec-mode',menuMode);localStorage.setItem('ec-pil',menuPil)}catch(e){}
  if(state==='menu'||state==='over'){resetOffline();for(const s of ships){s.alive=false;s.g.visible=false}for(const s of ships)if(s.bot&&s.on)spawn(s)}renderModes()}
+// selector de nave con vista previa 3D
+const pv={r:null,s:new THREE.Scene(),c:new THREE.PerspectiveCamera(32,2,.1,100),m:null};
+try{pv.r=new THREE.WebGLRenderer({canvas:$('prev'),antialias:true,alpha:true});pv.r.setPixelRatio(Math.min(devicePixelRatio,2));pv.r.setSize(300,150,false)}catch(e){}
+pv.s.add(new THREE.HemisphereLight(0xa8b8ff,0x2a1040,1.1));{const l=new THREE.DirectionalLight(0xffd0a0,1.2);l.position.set(5,8,6);pv.s.add(l)}
+pv.c.position.set(0,7,17);pv.c.lookAt(0,0,0);
+function setPreview(){if(pv.m){pv.s.remove(pv.m.g)}pv.m=makeShip(ROSTER[0].c,myShip,pv.s);pv.m.flames.forEach(f=>f.scale.set(1,.9,1))}
+function renderShips(){$('shipsel').innerHTML=SHIPS.map((m,i)=>`<button class="chip${i===myShip?' on':''}" data-i="${i}">${m.n}<small>${m.d}</small></button>`).join('');
+ const st=SHIPS[myShip],bar=(l,v)=>`<span>${l}</span><i style="width:${Math.round(v*100)}%"></i>`;
+ $('stats').innerHTML=bar('Blindaje',st.hp/150)+bar('Velocidad',st.spd/1.18)+bar('Agilidad',st.agi/1.3)+bar('Tamaño',st.hr/46);setPreview()}
+$('shipsel').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;myShip=+b.dataset.i;try{localStorage.setItem('ec-ship',myShip)}catch(e){}if(!online)setShipType(P,myShip);renderShips()});
+renderShips();
 $('modes').addEventListener('click',e=>{const b=e.target.closest('.chip');if(b)pickMode(b.dataset.v)});renderModes();
 $('maps').addEventListener('click',e=>{const b=e.target.closest('.chip');if(b)pickMap(+b.dataset.i)});renderMaps();
 if(window.NET){$('netbox').hidden=false;$('go').classList.add('alt');try{$('name').value=localStorage.getItem('ec-name')||''}catch(e){}
@@ -588,7 +640,7 @@ resetOffline();for(const s of ships)if(s.bot&&s.on)spawn(s);P.alive=false;P.g.vi
 // --- hud ---
 const rc=$('radar').getContext('2d');let hudT=0,deadCam=new THREE.Vector3();
 function drawHud(lock){
- $('hp').firstChild.style.width=Math.max(0,P.hp)+'%';$('bst').firstChild.style.width=P.boost*100+'%';
+ $('hp').firstChild.style.width=Math.max(0,P.hp/ST(P).hp*100)+'%';$('bst').firstChild.style.width=P.boost*100+'%';
  const m=Math.max(0,Math.ceil(time));$('tc').textContent=online&&roundState==='wait'?'Esperando pilotos':(gmode==='teams'?TEAMN[0]+' '+teamK(0)+' · '+teamK(1)+' '+TEAMN[1]+'   ':'')+Math.floor(m/60)+':'+String(m%60).padStart(2,'0');
  const row=s=>`<div><span style="color:${s.css}">${gmode==='teams'?'P'+(s.tslot+1)+' ':''}${esc(s.n)}</span><b>${s.k}</b></div>`;
  $('tr').innerHTML=gmode==='teams'?[0,1].map(t=>`<div class="tm"><span style="color:${TEAMCSS[t]}">Equipo ${TEAMN[t]}</span><b>${teamK(t)}</b></div>`+ships.filter(s=>s.on&&s.team===t).sort((a,b)=>b.k-a.k).map(row).join('')).join(''):ships.filter(s=>s.on).sort((a,b)=>b.k-a.k).map(row).join('');
@@ -606,7 +658,7 @@ function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/
  if(state==='play'&&!online){time-=dt;if(time<=0){end()}}
  if(online&&roundState!=='wait')time=Math.max(0,time-dt);
  readPad();
- if(gp&&!$('overlay').classList.contains('off')&&!$('menu').hidden){if(gpTap(14))pickMap(mapIdx-1);if(gpTap(15))pickMap(mapIdx+1);if(gpTap(0)||gpTap(9))start()}
+ if(gp&&!$('overlay').classList.contains('off')&&!$('menu').hidden){if(gpTap(14))pickMap(mapIdx-1);if(gpTap(15))pickMap(mapIdx+1);if(gpTap(4)||gpTap(5)){myShip=(myShip+(gpTap(5)?1:3))%4;try{localStorage.setItem('ec-ship',myShip)}catch(e){}if(!online)setShipType(P,myShip);renderShips()}if(gpTap(0)||gpTap(9))start()}
  let lock=null;
  if(state==='play'&&P.alive){
   const gx=gp?dz(gp.axes[0]||0):0,gy=gp?dz(gp.axes[1]||0):0;
@@ -614,7 +666,7 @@ function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/
   const trig=i=>gp&&gp.buttons[i]?gp.buttons[i].value:0,tilt=clamp(trig(7)-trig(6)+K('e')-K('q'));
   const yi=K('d')+K('arrowright')-K('a')-K('arrowleft')+stick.x+gx;let pi=K('w')+K('arrowup')-K('s')-K('arrowdown')-stick.y-gy;if(inv)pi=-pi;
   const yc=clamp(yi),tight=yc*tilt>0?1+Math.abs(tilt)*1.1:1;
-  if(!P.man)steer(P,yc*tight,clamp(pi),dt,1.9,tilt*1.35+yc*.45*(1-Math.abs(tilt)));
+  if(!P.man)steer(P,yc*tight,clamp(pi),dt,1.9*ST(P).agi,tilt*1.35+yc*.45*(1-Math.abs(tilt)));
   moveShip(P,dt,boostHeld||keys.shift||gpDown(5),keys.c||keys.control||gpDown(4));
   lock=lockTarget();markSend-=dt;if(lock){lock.markT=4;if(lock!==lastLock)sfx('lock',P);if(online&&gmode==='teams'&&(lock!==lastLock||markSend<=0)){markSend=1.5;nsend({t:'mark',v:lock.i})}}lastLock=lock;if((fireHeld||keys[' ']||keys.j||gpDown(0))&&P.cd<=0)fire(P,lock?leadDir(P.pos,lock,0):P.f.clone())}
  for(const s of ships){if(s.remote){if(s.alive)remoteUpdate(s,dt);continue}if(s.bot&&s.alive)bot(s,dt);if(!s.alive&&s.on&&(s.bot||(state==='play'&&s===P))){s.rt-=dt;if(s.rt<=0)spawn(s)}}
@@ -622,7 +674,7 @@ function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/
  for(let i=bullets.length-1;i>=0;i--){const b=bullets[i],p0=b.m.position.clone();b.life-=dt;b.m.position.addScaledVector(b.v,dt);const p1=b.m.position;let dead=b.life<=0||p1.y<0;
   if(!dead){const seg=p1.clone().sub(p0),L2=seg.lengthSq()||1;
    for(const s of ships){if(s===b.o||!s.alive||ally(b.o,s))continue;const t=clamp(s.pos.clone().sub(p0).dot(seg)/L2,1),q=p0.clone().addScaledVector(seg,Math.max(0,t));
-    if(q.distanceToSquared(s.pos)<30){if(s.remote){if(s.roll>0)continue;if(b.o===P)hitMark();burst(q,s.shield?0x9ff0ff:s.c,3,20);dead=true;break}if(s.roll>0){b.v.negate();b.o=s;burst(q,0xffffff,3,25);if(s===P)sfx('ping',P)}else{damage(s,b.dmg||10,b.o);if(b.o===P)hitMark();burst(q,s.c,3,20);dead=true}break}}}
+    if(q.distanceToSquared(s.pos)<ST(s).hr){if(s.remote){if(s.roll>0)continue;if(b.o===P)hitMark();burst(q,s.shield?0x9ff0ff:s.c,3,20);dead=true;break}if(s.roll>0){b.v.negate();b.o=s;burst(q,0xffffff,3,25);if(s===P)sfx('ping',P)}else{damage(s,b.dmg||10,b.o);if(b.o===P)hitMark();burst(q,s.c,3,20);dead=true}break}}}
   if(!dead){const w=worldHit(p0,p1);if(w){dead=true;burst(p1,w.rock?0xffd34d:0xffffff,2,15);if(w.rock&&(!online||local(b.o)))rockDamage(w.rock,6)}}
   if(dead){scene.remove(b.m);bullets.splice(i,1)}}
  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.life-=dt*1.3;p.m.position.addScaledVector(p.v,dt);p.v.multiplyScalar(.96);p.m.scale.setScalar(Math.max(.01,p.life));p.m.material.opacity=Math.max(0,p.life);
@@ -631,7 +683,7 @@ function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/
  camera.up.lerp(UP,1-Math.exp(-dt*10)).normalize();
  if(state==='play'&&P.alive){
   if(P.man){if(!camHold)camHold=camera.position.clone();camera.position.copy(camHold);camLook.lerp(P.pos,1-Math.exp(-dt*12));camBack=1}
-  else{camHold=null;camBack=Math.max(0,camBack-dt*1.2);const want=P.pos.clone().addScaledVector(P.f,-20).addScaledVector(UP,6);
+  else{camHold=null;camBack=Math.max(0,camBack-dt*1.2);const want=P.pos.clone().addScaledVector(P.f,-20*ST(P).cam).addScaledVector(UP,6*ST(P).cam);
    camera.position.lerp(want,1-Math.exp(-dt*(8-5*camBack)));camLook.lerp(P.pos.clone().addScaledVector(P.f,30),1-Math.exp(-dt*(10-6*camBack)))}
   camera.lookAt(camLook);deadCam.copy(P.pos);
   const fov=70+(P.speed-120)/10;if(Math.abs(camera.fov-fov)>.1){camera.fov=fov;camera.updateProjectionMatrix()}
@@ -639,12 +691,13 @@ function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/
  else if(state==='play'){camera.lookAt(deadCam);$('ret').style.display='none';if(P.rt>0)$('msg').style.opacity=1,$('msg').textContent='Reapareces en '+Math.ceil(P.rt)}
  else{camera.up.copy(UP);ang+=dt*.08;camera.position.set(Math.cos(ang)*R*.8,CEIL*.6,Math.sin(ang)*R*.8);camera.lookAt(0,CEIL*.25,0)}
  hurt=Math.max(0,hurt-dt*1.5);hitT-=dt;drawArrows();drawTags();for(const s of ships)if(s.markT>0)s.markT-=dt;
- $('lowhp').style.opacity=state==='play'&&P.alive&&P.hp<30?(.35+.3*Math.sin(now/150)):0;
+ $('lowhp').style.opacity=state==='play'&&P.alive&&P.hp<ST(P).hp*.3?(.35+.3*Math.sin(now/150)):0;
  $('cdR').className=P.rollCd>0?'off':'';$('cdM').className=P.manCd>0||P.boost<.3?'off':'';$('hurt').style.opacity=hurt;
  if(msgT>0){msgT-=dt;if(msgT<=0)$('msg').style.opacity=0}
  hudT-=dt;if(state==='play'&&hudT<=0){hudT=.1;drawHud(lock)}
  if(gp)for(let i=0;i<gp.buttons.length;i++)gpPrev[i]=gpDown(i);
  updFX(dt);
+ if(pv.r&&pv.m&&!$('overlay').classList.contains('off')){pv.m.g.rotation.y+=dt*.6;pv.m.g.rotation.x=.25;pv.r.render(pv.s,pv.c)}
  camera.position.sub(shakeOff);shake=Math.max(0,shake-dt*2.2);shakeOff.set(rnd(1),rnd(1),rnd(1)).multiplyScalar(shake*shake*2.2);camera.position.add(shakeOff);
  if(composer)composer.render();else renderer.render(scene,camera);camera.position.sub(shakeOff);shakeOff.set(0,0,0)}
 requestAnimationFrame(loop);
